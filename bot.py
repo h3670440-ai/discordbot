@@ -7,9 +7,7 @@ import datetime
 import sqlite3
 import random
 import string
-import threading
 from datetime import timedelta
-from flask import Flask, request
 
 # Load environment variables
 load_dotenv()
@@ -45,51 +43,9 @@ class VanityBot(commands.Bot):
         
         self.db.commit()
         
-        # Start API Server
-        threading.Thread(target=self.run_api, daemon=True).start()
-        
         # This syncs the slash commands to Discord
         await self.tree.sync()
-        print(f"✅ Slash commands synced, Database ready, and API online!")
-
-    def run_api(self):
-        app = Flask(__name__)
-
-        @app.route('/verify')
-        def verify():
-            key_code = request.args.get('key')
-            if not key_code:
-                return "invalid"
-            
-            # Use a new connection for thread safety
-            conn = sqlite3.connect("vanity.db")
-            cursor = conn.cursor()
-            
-            # Check key
-            cursor.execute("SELECT is_redeemed, redeemed_by FROM keys WHERE key = ?", (key_code,))
-            row = cursor.fetchone()
-            
-            if not row:
-                conn.close()
-                return "not found"
-            
-            if row[0] == 0:
-                conn.close()
-                return "not redeemed"
-            
-            user_id = row[1]
-            # Check blacklist
-            cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))
-            if cursor.fetchone():
-                conn.close()
-                return "blacklisted"
-            
-            conn.close()
-            return "success"
-
-        # Railway uses PORT env var
-        port = int(os.getenv('PORT', 5000))
-        app.run(host='0.0.0.0', port=port)
+        print(f"✅ Slash commands synced and Database ready!")
 
 bot = VanityBot()
 

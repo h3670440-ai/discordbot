@@ -4,6 +4,10 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import datetime
+import sqlite3
+import random
+import string
+from datetime import timedelta
 
 # Load environment variables
 load_dotenv()
@@ -17,27 +21,60 @@ intents.message_content = True
 class VanityBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
+        self.db = None
     
     async def setup_hook(self):
+        # Initialize Database
+        self.db = sqlite3.connect("vanity.db")
+        cursor = self.db.cursor()
+        
+        # Create Tables
+        cursor.execute('''CREATE TABLE IF NOT EXISTS keys (
+            key TEXT PRIMARY KEY,
+            duration TEXT,
+            expiration TIMESTAMP,
+            is_redeemed INTEGER DEFAULT 0,
+            redeemed_by INTEGER
+        )''')
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS blacklists (
+            user_id INTEGER PRIMARY KEY
+        )''')
+        
+        self.db.commit()
+        
         # This syncs the slash commands to Discord
         await self.tree.sync()
-        print(f"✅ Slash commands synced!")
+        print(f"✅ Slash commands synced and Database ready!")
 
 bot = VanityBot()
 
 # --- SECURITY CHECK HELPER ---
 async def check_security(interaction: discord.Interaction):
     owner_name = os.getenv('OWNER_NAME', 'y9pv')
+    
+    # Check if user is blacklisted
+    cursor = bot.db.cursor()
+    cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+    if cursor.fetchone():
+        await interaction.response.send_message("❌ You are blacklisted from using this panel.", ephemeral=True)
+        return False
+
+    # Check for Owner name
     if interaction.user.name != owner_name:
         await interaction.response.send_message(f"❌ user mismatch (expected {owner_name})", ephemeral=True)
         return False
     
+    # Check for Owner role
     has_role = discord.utils.get(interaction.user.roles, name="Owner")
     if not has_role:
         await interaction.response.send_message("❌ role mismatch", ephemeral=True)
         return False
         
     return True
+
+def generate_key_string():
+    return "VANITY-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
 
 @bot.event
 async def on_ready():
@@ -55,10 +92,29 @@ class RedeemModal(discord.ui.Modal, title="Redeem Your Key"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Placeholder for backend verification
-        key = self.key_input.value
+        key_code = self.key_input.value
+        cursor = bot.db.cursor()
+        
+        # Check if user is blacklisted
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+        if cursor.fetchone():
+            return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+
+        cursor.execute("SELECT key, is_redeemed, expiration FROM keys WHERE key = ?", (key_code,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return await interaction.response.send_message("❌ Invalid key.", ephemeral=True)
+        
+        if row[1] == 1:
+            return await interaction.response.send_message("❌ This key has already been redeemed.", ephemeral=True)
+
+        # Update DB
+        cursor.execute("UPDATE keys SET is_redeemed = 1, redeemed_by = ? WHERE key = ?", (interaction.user.id, key_code))
+        bot.db.commit()
+        
         await interaction.response.send_message(
-            f"⌛ Verifying key: `{key}`...\n❌ Error: Backend not connected. Contact an administrator.",
+            f"✅ Successfully redeemed key! Your subscription is now active.",
             ephemeral=True
         )
 
@@ -73,6 +129,7 @@ class VanityPanelView(discord.ui.View):
     @discord.ui.button(label="Get Key", style=discord.ButtonStyle.secondary, custom_id="vanity:get_key")
     async def get_key_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         content = (
+            f"Print(\"vanitynotoutyetlmao\")\n"
             f"{interaction.user.mention} Visit this channel: <#1488627841191903283>\n"
             "https://discord.com/channels/1487822538225487892/1488627841191903283"
         )
@@ -80,9 +137,20 @@ class VanityPanelView(discord.ui.View):
 
     @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary, custom_id="vanity:reset_hwid")
     async def reset_hwid_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Placeholder for HWID reset logic
+        cursor = bot.db.cursor()
+        
+        # Check if user is blacklisted
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+        if cursor.fetchone():
+            return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+
+        # Check for active subscription
+        cursor.execute("SELECT key FROM keys WHERE redeemed_by = ?", (interaction.user.id,))
+        if not cursor.fetchone():
+            return await interaction.response.send_message("❌ You need to redeem a key before you can reset your HWID.", ephemeral=True)
+
         await interaction.response.send_message(
-            "Your HWID reset request has been sent to the staff team for approval.",
+            "✅ Your key HWID has been reset and can now be used on different executors.",
             ephemeral=True
         )
 
@@ -155,7 +223,7 @@ async def scriptpanel(interaction: discord.Interaction):
             "**Available Actions:**\n"
             "> Redeem Key: Activate your subscription.\n"
             "> Get Key: Information on how to obtain access.\n"
-            "> Reset HWID: Update your hardware ID for a new PC.\n\n"
+            "> Reset HWID: Resets ur key hwid to be used on different executors.\n\n"
             "*Status: System Operational*"
         ),
         color=discord.Color.from_rgb(255, 0, 0), # Pure Red
@@ -168,6 +236,73 @@ async def scriptpanel(interaction: discord.Interaction):
     embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
 
     await interaction.response.send_message(embed=embed, view=VanityPanelView())
+
+# --- ADMIN KEY COMMANDS ---
+
+@bot.tree.command(name="generatescript", description="Generates a Vanity key (Owner Only)")
+@app_commands.describe(
+    member="The member to generate a key for",
+    value="Number of units (e.g. 10)",
+    unit="The unit of time",
+    destination="Where to send the key"
+)
+async def generatescript(
+    interaction: discord.Interaction, 
+    member: discord.Member, 
+    value: int = 1, 
+    unit: str = "lifetime", 
+    destination: str = "channel"
+):
+    if not await check_security(interaction): return
+
+    new_key = generate_key_string()
+    expiration = None
+    
+    if unit.lower() != "lifetime":
+        now = datetime.datetime.now()
+        if unit == "minutes": expiration = now + timedelta(minutes=value)
+        elif unit == "hours": expiration = now + timedelta(hours=value)
+        elif unit == "weeks": expiration = now + timedelta(weeks=value)
+        elif unit == "months": expiration = now + timedelta(days=value*30)
+        else: expiration = None # Default to lifetime if unit invalid
+
+    # Save to DB
+    cursor = bot.db.cursor()
+    cursor.execute("INSERT INTO keys (key, duration, expiration) VALUES (?, ?, ?)", (new_key, f"{value} {unit}", expiration))
+    bot.db.commit()
+
+    msg = f"Generated a Vanity key for {member.mention}\nKey: `{new_key}`\nDuration: **{value} {unit}**"
+    
+    if destination == "dm":
+        try:
+            await member.send(msg)
+            await interaction.response.send_message(f"✅ Key sent to {member.mention}'s DMs.", ephemeral=True)
+        except:
+            await interaction.response.send_message(f"❌ Failed to DM {member.mention}. Key shown here: `{new_key}`", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"{interaction.user.mention} generated a vanity key for {member.mention}\n`{new_key}`")
+
+@bot.tree.command(name="blacklist", description="Blacklists a user from the script (Owner Only)")
+async def blacklist(interaction: discord.Interaction, member: discord.Member):
+    if not await check_security(interaction): return
+
+    cursor = bot.db.cursor()
+    cursor.execute("INSERT OR IGNORE INTO blacklists (user_id) VALUES (?)", (member.id,))
+    # Wipe their keys
+    cursor.execute("DELETE FROM keys WHERE redeemed_by = ?", (member.id,))
+    bot.db.commit()
+
+    await interaction.response.send_message(f"🚫 **{member}** has been blacklisted and their keys have been wiped.")
+
+@bot.tree.command(name="unblacklist", description="Unblacklists a user (Owner Only)")
+async def unblacklist(interaction: discord.Interaction, member: discord.Member):
+    if not await check_security(interaction): return
+
+    cursor = bot.db.cursor()
+    cursor.execute("DELETE FROM blacklists WHERE user_id = ?", (member.id,))
+    bot.db.commit()
+
+    await interaction.response.send_message(f"✅ **{member}** has been unblacklisted.")
 
 # Run the bot
 if TOKEN:

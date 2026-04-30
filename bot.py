@@ -7,8 +7,6 @@ import datetime
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-# Use your ID as default if the variable isn't set on Railway yet
-OWNER_ID = int(os.getenv('OWNER_ID', 1481473862775472190))
 PREFIX = "!"
 
 # Setup Intents
@@ -18,19 +16,20 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-# Custom check for Owner ID
+# Custom check for v9pv + Owner Role
 def is_vanity_owner():
     async def predicate(ctx):
-        if ctx.author.id != OWNER_ID:
-            await ctx.send("❌ You are not authorized to use this command.")
-            return False
-        return True
+        has_role = discord.utils.get(ctx.author.roles, name="Owner")
+        if ctx.author.name == "v9pv" and has_role:
+            return True
+        await ctx.send("❌ Access Denied: You must be **v9pv** and have the **Owner** role.")
+        return False
     return commands.check(predicate)
 
 @bot.event
 async def on_ready():
     print(f'✅ Vanity Bot is online! Logged in as {bot.user}')
-    print(f'👑 Authorized Owner ID: {OWNER_ID}')
+    print(f'🛡️ Security: Restricted to v9pv + Owner Role')
 
 # --- MODERATION COMMANDS (OWNER ONLY) ---
 
@@ -96,8 +95,9 @@ async def helpme(ctx):
     """Custom help command."""
     embed = discord.Embed(title="🛡️ Vanity Bot Commands", color=discord.Color.red())
     
-    # Moderation (Owner only)
-    if ctx.author.id == OWNER_ID:
+    # Moderation (v9pv + Owner Role only)
+    has_role = discord.utils.get(ctx.author.roles, name="Owner")
+    if ctx.author.name == "v9pv" and has_role:
         embed.add_field(name="👑 Owner Commands", value="`!ban`, `!kick`, `!mute`, `!unmute`", inline=False)
     
     # Public

@@ -7,8 +7,12 @@ app = Flask(__name__)
 @app.route('/verify')
 def verify():
     key_code = request.args.get('key')
+    print(f"DEBUG: Received verification request for key: '{key_code}'")
+    
     if not key_code:
         return "invalid"
+    
+    key_code = key_code.strip()
     
     try:
         # Connect to the same database the bot uses

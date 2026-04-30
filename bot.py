@@ -128,12 +128,19 @@ class VanityPanelView(discord.ui.View):
 
     @discord.ui.button(label="Get Key", style=discord.ButtonStyle.secondary, custom_id="vanity:get_key")
     async def get_key_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        content = (
-            f"Print(\"vanitynotoutyetlmao\")\n"
-            f"{interaction.user.mention} Visit this channel: <#1488627841191903283>\n"
-            "https://discord.com/channels/1487822538225487892/1488627841191903283"
-        )
-        await interaction.response.send_message(content, ephemeral=True)
+        cursor = bot.db.cursor()
+        
+        # Check if user is blacklisted
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+        if cursor.fetchone():
+            return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+
+        # Check for active subscription
+        cursor.execute("SELECT key FROM keys WHERE redeemed_by = ?", (interaction.user.id,))
+        if not cursor.fetchone():
+            return await interaction.response.send_message("❌ You need to redeem a key before you can get the script.", ephemeral=True)
+
+        await interaction.response.send_message(f"```lua\nPrint(\"vanitynotoutyetlmao\")\n```", ephemeral=True)
 
     @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary, custom_id="vanity:reset_hwid")
     async def reset_hwid_button(self, interaction: discord.Interaction, button: discord.ui.Button):

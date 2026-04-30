@@ -27,8 +27,9 @@ bot = VanityBot()
 
 # --- SECURITY CHECK HELPER ---
 async def check_security(interaction: discord.Interaction):
-    if interaction.user.name != "v9pv":
-        await interaction.response.send_message("❌ user mismatch", ephemeral=True)
+    owner_name = os.getenv('OWNER_NAME', 'y9pv')
+    if interaction.user.name != owner_name:
+        await interaction.response.send_message(f"❌ user mismatch (expected {owner_name})", ephemeral=True)
         return False
     
     has_role = discord.utils.get(interaction.user.roles, name="Owner")

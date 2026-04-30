@@ -45,7 +45,7 @@ async def on_ready():
 
 # --- UI COMPONENTS FOR SCRIPT PANEL ---
 
-class RedeemModal(discord.ui.Modal, title="🔑 Redeem Your Key"):
+class RedeemModal(discord.ui.Modal, title="Redeem Your Key"):
     key_input = discord.ui.TextInput(
         label="Enter License Key",
         placeholder="VANITY-XXXX-XXXX-XXXX",
@@ -66,29 +66,23 @@ class VanityPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None) # Persistent view
 
-    @discord.ui.button(label="Redeem Key", style=discord.ButtonStyle.danger, emoji="🔑", custom_id="vanity:redeem")
+    @discord.ui.button(label="Redeem Key", style=discord.ButtonStyle.danger, custom_id="vanity:redeem")
     async def redeem_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RedeemModal())
 
-    @discord.ui.button(label="Get Key", style=discord.ButtonStyle.secondary, emoji="🎫", custom_id="vanity:get_key")
+    @discord.ui.button(label="Get Key", style=discord.ButtonStyle.secondary, custom_id="vanity:get_key")
     async def get_key_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="🎫 How to get a Key",
-            description=(
-                "To obtain a key for **Vanity**, follow these steps:\n\n"
-                "1. Join our [Discord Server](https://discord.gg/vanity)\n"
-                "2. Visit the <#channel-id> to purchase or get a trial.\n"
-                "3. Use the **Redeem** button on the panel to activate it."
-            ),
-            color=discord.Color.red()
+        content = (
+            f"{interaction.user.mention} Visit this channel: <#1488627841191903283>\n"
+            "https://discord.com/channels/1487822538225487892/1488627841191903283"
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(content, ephemeral=True)
 
-    @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary, emoji="💻", custom_id="vanity:reset_hwid")
+    @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary, custom_id="vanity:reset_hwid")
     async def reset_hwid_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Placeholder for HWID reset logic
         await interaction.response.send_message(
-            "✅ Your HWID reset request has been sent to the staff team for approval.",
+            "Your HWID reset request has been sent to the staff team for approval.",
             ephemeral=True
         )
 
@@ -155,14 +149,14 @@ async def scriptpanel(interaction: discord.Interaction):
     if not await check_security(interaction): return
 
     embed = discord.Embed(
-        title="💉 Vanity Script | Control Panel",
+        title="Vanity Script | Control Panel",
         description=(
-            "Welcome to the **Vanity** management interface. Use the buttons below to manage your license and hardware identification.\n\n"
+            "Welcome to the Vanity management interface. Use the buttons below to manage your license and hardware identification.\n\n"
             "**Available Actions:**\n"
-            "> 🔑 **Redeem Key:** Activate your subscription.\n"
-            "> 🎫 **Get Key:** Information on how to obtain access.\n"
-            "> 💻 **Reset HWID:** Update your hardware ID for a new PC.\n\n"
-            "*Status: System Operational ✅*"
+            "> Redeem Key: Activate your subscription.\n"
+            "> Get Key: Information on how to obtain access.\n"
+            "> Reset HWID: Update your hardware ID for a new PC.\n\n"
+            "*Status: System Operational*"
         ),
         color=discord.Color.from_rgb(255, 0, 0), # Pure Red
         timestamp=datetime.datetime.now()

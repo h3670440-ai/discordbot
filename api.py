@@ -1,0 +1,47 @@
+from flask import Flask, request
+import sqlite3
+import os
+
+app = Flask(__name__)
+
+@app.route('/verify')
+def verify():
+    key_code = request.args.get('key')
+    if not key_code:
+        return "invalid"
+    
+    try:
+        # Connect to the same database the bot uses
+        conn = sqlite3.connect("vanity.db")
+        cursor = conn.cursor()
+        
+        # Check key existence and redemption status
+        cursor.execute("SELECT is_redeemed, redeemed_by FROM keys WHERE key = ?", (key_code,))
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.close()
+            return "not found"
+        
+        if row[0] == 0:
+            conn.close()
+            return "not redeemed"
+        
+        user_id = row[1]
+        
+        # Check if the user who redeemed it is blacklisted
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))
+        if cursor.fetchone():
+            conn.close()
+            return "blacklisted"
+        
+        conn.close()
+        return "success"
+    except Exception as e:
+        print(f"API Error: {e}")
+        return "error"
+
+if __name__ == '__main__':
+    # Railway provides the PORT environment variable
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

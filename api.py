@@ -42,6 +42,6 @@ def verify():
         return "error"
 
 if __name__ == '__main__':
-    # Railway provides the PORT environment variable
-    port = int(os.getenv('PORT', 5000))
+    # Railway provides the PORT environment variable, defaulting to 8080
+    port = int(os.getenv('PORT', 8080))
     app.run(host='0.0.0.0', port=port)

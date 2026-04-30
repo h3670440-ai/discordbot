@@ -34,7 +34,8 @@ class VanityBot(commands.Bot):
             duration TEXT,
             expiration TIMESTAMP,
             is_redeemed INTEGER DEFAULT 0,
-            redeemed_by INTEGER
+            redeemed_by INTEGER,
+            hwid TEXT
         )''')
         
         cursor.execute('''CREATE TABLE IF NOT EXISTS blacklists (
@@ -275,7 +276,8 @@ async def generatescript(
 
     # Save to DB
     cursor = bot.db.cursor()
-    cursor.execute("INSERT INTO keys (key, duration, expiration) VALUES (?, ?, ?)", (new_key, f"{value} {unit}", expiration))
+    cursor.execute("INSERT INTO keys (key, duration, expiration, is_redeemed, hwid) VALUES (?, ?, ?, ?, ?)", 
+                   (new_key, f"{value} {unit}", expiration, 0, None))
     bot.db.commit()
 
     msg = f"Generated a Vanity key for {member.mention}\nKey: `{new_key}`\nDuration: **{value} {unit}**"
@@ -301,15 +303,30 @@ async def blacklist(interaction: discord.Interaction, member: discord.Member):
 
     await interaction.response.send_message(f"🚫 **{member}** has been blacklisted and their keys have been wiped.")
 
-@bot.tree.command(name="unblacklist", description="Unblacklists a user (Owner Only)")
-async def unblacklist(interaction: discord.Interaction, member: discord.Member):
+@bot.tree.command(name="unblacklist", description="Unblacklist a user")
+async def unblacklist(interaction: discord.Interaction, user: discord.Member):
     if not await check_security(interaction): return
-
+    
     cursor = bot.db.cursor()
-    cursor.execute("DELETE FROM blacklists WHERE user_id = ?", (member.id,))
+    cursor.execute("DELETE FROM blacklists WHERE user_id = ?", (user.id,))
     bot.db.commit()
+    await interaction.response.send_message(f"✅ {user.mention} has been unblacklisted.", ephemeral=True)
 
-    await interaction.response.send_message(f"✅ **{member}** has been unblacklisted.")
+@bot.tree.command(name="resethwid", description="Reset the HWID bound to a key")
+async def resethwid(interaction: discord.Interaction, key: str):
+    if not await check_security(interaction): return
+    
+    cursor = bot.db.cursor()
+    cursor.execute("SELECT is_redeemed FROM keys WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    
+    if not row:
+        await interaction.response.send_message("❌ Key not found.", ephemeral=True)
+        return
+    
+    cursor.execute("UPDATE keys SET hwid = NULL WHERE key = ?", (key,))
+    bot.db.commit()
+    await interaction.response.send_message(f"✅ HWID for key `{key}` has been reset.", ephemeral=True)
 
 # Run the bot
 if TOKEN:

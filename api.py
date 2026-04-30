@@ -1,62 +1,85 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import sqlite3
 import os
 import threading
 import subprocess
 import time
+import datetime
 
 app = Flask(__name__)
 
-@app.route('/verify')
-def verify():
+@app.route('/check', methods=['GET'])
+def check():
     key_code = request.args.get('key')
-    print(f"DEBUG: Received verification request for key: '{key_code}'")
+    hwid = request.args.get('hwid')
     
-    if not key_code:
-        return "invalid"
+    print(f"API: Request for key='{key_code}', hwid='{hwid}'")
+    
+    if not key_code or not hwid:
+        return jsonify({"valid": False, "reason": "Missing key or HWID"}), 400
     
     key_code = key_code.strip()
+    hwid = hwid.strip()
     
     try:
-        # Connect to the same database the bot uses
         conn = sqlite3.connect("vanity.db")
         cursor = conn.cursor()
         
-        # Check key existence and redemption status
-        cursor.execute("SELECT is_redeemed, redeemed_by FROM keys WHERE key = ?", (key_code,))
+        # Check if key exists
+        cursor.execute("SELECT is_redeemed, redeemed_by, hwid, expiration FROM keys WHERE key = ?", (key_code,))
         row = cursor.fetchone()
         
         if not row:
             conn.close()
-            return "not found"
+            return jsonify({"valid": False, "reason": "Invalid key"}), 200
         
-        if row[0] == 0:
+        is_redeemed, user_id, saved_hwid, expiration = row
+        
+        # Check Expiration
+        if expiration is not None:
+            # SQLite stores datetime as string. Convert to datetime object.
+            # Format usually 'YYYY-MM-DD HH:MM:SS.mmmmmm'
+            try:
+                exp_dt = datetime.datetime.fromisoformat(expiration)
+                if datetime.datetime.now() > exp_dt:
+                    conn.close()
+                    return jsonify({"valid": False, "reason": "Key expired"}), 200
+            except:
+                pass # If parsing fails, assume lifetime or malformed
+        
+        if is_redeemed == 0:
             conn.close()
-            return "not redeemed"
+            return jsonify({"valid": False, "reason": "Key not redeemed yet"}), 200
         
-        user_id = row[1]
-        
-        # Check if the user who redeemed it is blacklisted
+        # Check blacklist
         cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))
         if cursor.fetchone():
             conn.close()
-            return "blacklisted"
-        
+            return jsonify({"valid": False, "reason": "Blacklisted user"}), 200
+            
+        # Check HWID
+        if saved_hwid is None:
+            # Bind HWID on first use
+            cursor.execute("UPDATE keys SET hwid = ? WHERE key = ?", (hwid, key_code))
+            conn.commit()
+            print(f"API: Bound key {key_code} to HWID {hwid}")
+        elif saved_hwid != hwid:
+            conn.close()
+            return jsonify({"valid": False, "reason": "HWID mismatch"}), 200
+            
         conn.close()
-        return "success"
+        return jsonify({"valid": True, "reason": "success"}), 200
+        
     except Exception as e:
         print(f"API Error: {e}")
-        return "error"
+        return jsonify({"valid": False, "reason": f"Internal server error: {e}"}), 500
 
 def run_bot():
     print("API: Starting Discord Bot...")
     subprocess.run(["python", "bot.py"])
 
 if __name__ == '__main__':
-    # Start the bot in a background thread
     threading.Thread(target=run_bot, daemon=True).start()
-    
-    # Railway provides the PORT environment variable
     port = int(os.getenv('PORT', 8080))
-    print(f"API: Starting server on port {port}...")
+    print(f"API: Listening on port {port}")
     app.run(host='0.0.0.0', port=port)

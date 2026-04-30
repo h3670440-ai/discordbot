@@ -1,6 +1,9 @@
 from flask import Flask, request
 import sqlite3
 import os
+import threading
+import subprocess
+import time
 
 app = Flask(__name__)
 
@@ -45,7 +48,15 @@ def verify():
         print(f"API Error: {e}")
         return "error"
 
+def run_bot():
+    print("API: Starting Discord Bot...")
+    subprocess.run(["python", "bot.py"])
+
 if __name__ == '__main__':
-    # Railway provides the PORT environment variable, defaulting to 8080
+    # Start the bot in a background thread
+    threading.Thread(target=run_bot, daemon=True).start()
+    
+    # Railway provides the PORT environment variable
     port = int(os.getenv('PORT', 8080))
+    print(f"API: Starting server on port {port}...")
     app.run(host='0.0.0.0', port=port)

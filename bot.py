@@ -7,9 +7,8 @@ import datetime
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-
-# Configuration
-OWNER_ID = 1481473862775472190
+# Use your ID as default if the variable isn't set on Railway yet
+OWNER_ID = int(os.getenv('OWNER_ID', 1481473862775472190))
 PREFIX = "!"
 
 # Setup Intents

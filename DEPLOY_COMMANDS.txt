@@ -1,0 +1,117 @@
+=================================================================
+COPY AND PASTE THESE COMMANDS TO DEPLOY
+=================================================================
+
+Step 1: Navigate to botstuff folder
+-----------------------------------
+cd botstuff
+
+
+Step 2: Initialize Git and Push to GitHub
+------------------------------------------
+git init
+git add .
+git commit -m "Initial commit - Vanity bot"
+git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git branch -M main
+git push -u origin main
+
+(Replace YOUR_USERNAME and YOUR_REPO with your actual GitHub info)
+
+
+Step 3: Deploy to Railway
+--------------------------
+1. Go to: https://railway.app
+2. Click "New Project"
+3. Select "Deploy from GitHub repo"
+4. Choose your repository
+5. Wait for deployment (60 seconds)
+
+
+Step 4: Set Environment Variables in Railway
+---------------------------------------------
+Go to Railway Dashboard → Your Service → Variables tab
+
+Add these three variables:
+
+DISCORD_TOKEN = your_discord_bot_token_here
+OWNER_NAME = your_discord_username_here
+PORT = 8080
+
+
+Step 5: Test the API
+---------------------
+Open in browser:
+https://your-project.up.railway.app/
+
+Should show:
+{"status": "online", "service": "Vanity API", ...}
+
+
+Step 6: Run Discord Bot Locally
+--------------------------------
+cd botstuff
+python discord_bot.py
+
+(Keep this terminal open)
+
+
+Step 7: Generate and Redeem Key in Discord
+-------------------------------------------
+In Discord:
+/generatescript @YourUsername 1 lifetime channel
+
+Copy the key, then:
+/scriptpanel
+
+Click "Redeem Key" → Paste key → Submit
+
+
+Step 8: Update Roblox Config
+-----------------------------
+Edit vanityconfig.lua:
+['Key'] = "VANITY-XXXXXXXXXXXX",
+
+
+Step 9: Load Script in Roblox
+------------------------------
+Execute the script - it should work!
+
+
+=================================================================
+TESTING COMMANDS
+=================================================================
+
+Test API Health:
+curl https://your-project.up.railway.app/
+
+Test Database:
+curl https://your-project.up.railway.app/test
+
+Test Key Verification:
+curl "https://your-project.up.railway.app/check?key=YOUR_KEY&hwid=test"
+
+
+=================================================================
+TROUBLESHOOTING
+=================================================================
+
+API not responding?
+- Wait 60 seconds after deployment
+- Check Railway logs
+- Verify environment variables are set
+
+Bot not working?
+- Make sure python discord_bot.py is running
+- Check DISCORD_TOKEN is correct
+- Verify you have "Owner" role in Discord
+
+Script gets kicked?
+- Make sure you REDEEMED the key in Discord first
+- Check key is correct in vanityconfig.lua
+- Test the key with curl command above
+
+
+=================================================================
+YOU'RE DONE!
+=================================================================

@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify
 import sqlite3
 import os
-import threading
-import subprocess
-import time
+import asyncio
+from threading import Thread
 import datetime
 
 app = Flask(__name__)
@@ -150,22 +149,26 @@ def init_db():
         import traceback
         traceback.print_exc()
 
-def run_bot():
-    """Start Discord bot in background thread"""
-    print("[BOT] Starting Discord Bot...")
+def run_bot_async():
+    """Run Discord bot in async event loop"""
+    print("[BOT] Starting Discord Bot in background thread...")
     try:
-        import sys
-        # Check if TOKEN exists before starting bot
         TOKEN = os.getenv('DISCORD_TOKEN')
         if not TOKEN:
             print("[BOT] WARNING: DISCORD_TOKEN not found. Bot will not start.")
-            print("[BOT] API will continue running without bot functionality.")
             return
         
-        subprocess.run([sys.executable, "bot.py"])
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Import bot and run it
+        from bot import bot
+        loop.run_until_complete(bot.start(TOKEN))
     except Exception as e:
         print(f"[BOT] Failed to start: {e}")
-        print("[BOT] API will continue running without bot functionality.")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     print("=" * 50)
@@ -174,8 +177,8 @@ if __name__ == '__main__':
     
     init_db()
     
-    # Start bot in background (non-blocking)
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    # Start bot in background thread with its own event loop
+    bot_thread = Thread(target=run_bot_async, daemon=True)
     bot_thread.start()
     
     port = int(os.getenv('PORT', 8080))

@@ -1,26 +1,62 @@
 """
 Combined API and Discord Bot - Runs both together on Railway
+Discord bot runs in main thread, Flask API in background thread
 """
 from flask import Flask, request, jsonify
 import sqlite3
 import os
 import datetime
-import asyncio
 from threading import Thread
+import discord
+from discord import app_commands
+from discord.ext import commands
+import random
+import string
+from datetime import timedelta
 
 app = Flask(__name__)
 
+# Initialize Discord bot
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+
+class VanityBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+        self.db = None
+    
+    async def setup_hook(self):
+        self.db = sqlite3.connect("vanity.db")
+        cursor = self.db.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS keys (
+            key TEXT PRIMARY KEY,
+            duration TEXT,
+            expiration TIMESTAMP,
+            is_redeemed INTEGER DEFAULT 0,
+            redeemed_by INTEGER,
+            hwid TEXT
+        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS blacklists (
+            user_id INTEGER PRIMARY KEY
+        )''')
+        self.db.commit()
+        await self.tree.sync()
+        print(f"✅ Discord bot ready and synced!")
+
+bot = VanityBot()
+
+# Flask routes
 @app.route('/')
 def health():
     return jsonify({
         "status": "online",
-        "service": "Vanity API",
+        "service": "Vanity API + Discord Bot",
         "timestamp": datetime.datetime.now().isoformat()
     }), 200
 
 @app.route('/test')
 def test():
-    """Test endpoint to verify database connectivity"""
     try:
         conn = sqlite3.connect("vanity.db", timeout=10)
         cursor = conn.cursor()
@@ -36,10 +72,7 @@ def test():
             "blacklists": blacklist_count
         }), 200
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 200
+        return jsonify({"status": "error", "message": str(e)}), 200
 
 @app.route('/check', methods=['GET'])
 def check():
@@ -48,72 +81,52 @@ def check():
         key_code = request.args.get('key')
         hwid = request.args.get('hwid')
         
-        print(f"[CHECK] Request received - key='{key_code}', hwid='{hwid}'")
+        print(f"[CHECK] key='{key_code}', hwid='{hwid}'")
         
         if not key_code or not hwid:
-            print("[CHECK] Missing parameters")
             return jsonify({"valid": False, "reason": "Missing key or HWID"}), 200
         
         key_code = key_code.strip()
         hwid = hwid.strip()
         
-        print(f"[CHECK] Connecting to database...")
         conn = sqlite3.connect("vanity.db", timeout=10)
         cursor = conn.cursor()
-        
-        # Check if key exists
-        print(f"[CHECK] Querying key: {key_code}")
         cursor.execute("SELECT is_redeemed, redeemed_by, hwid, expiration FROM keys WHERE key = ?", (key_code,))
         row = cursor.fetchone()
         
         if not row:
-            print(f"[CHECK] Key not found: {key_code}")
             return jsonify({"valid": False, "reason": "Invalid key"}), 200
         
         is_redeemed, user_id, saved_hwid, expiration = row
-        print(f"[CHECK] Key found - is_redeemed={is_redeemed}, user_id={user_id}, saved_hwid={saved_hwid}")
         
-        # Check if key has been redeemed
         if is_redeemed == 0:
-            print(f"[CHECK] Key not redeemed yet")
             return jsonify({"valid": False, "reason": "Key not redeemed. Please redeem your key first"}), 200
         
-        # Check Expiration
-        if expiration is not None and expiration != "":
+        if expiration:
             try:
                 exp_dt = datetime.datetime.fromisoformat(expiration)
                 if datetime.datetime.now() > exp_dt:
-                    print(f"[CHECK] Key expired: {expiration}")
                     return jsonify({"valid": False, "reason": "Key expired"}), 200
-            except Exception as e:
-                print(f"[CHECK] Expiration parse error: {e}")
+            except:
                 pass
         
-        # Check blacklist
-        if user_id is not None:
+        if user_id:
             cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))
             if cursor.fetchone():
-                print(f"[CHECK] User blacklisted: {user_id}")
                 return jsonify({"valid": False, "reason": "Blacklisted user"}), 200
-            
-        # Check HWID
-        if saved_hwid is None or saved_hwid == "":
-            # Bind HWID on first use
+        
+        if not saved_hwid:
             cursor.execute("UPDATE keys SET hwid = ? WHERE key = ?", (hwid, key_code))
             conn.commit()
-            print(f"[CHECK] Bound key {key_code} to HWID {hwid}")
+            print(f"[CHECK] Bound key to HWID")
         elif saved_hwid != hwid:
-            print(f"[CHECK] HWID mismatch - expected: {saved_hwid}, got: {hwid}")
-            return jsonify({"valid": False, "reason": "HWID mismatch. Use /resethwid to reset"}), 200
+            return jsonify({"valid": False, "reason": "HWID mismatch"}), 200
         
-        print(f"[CHECK] Validation successful for key: {key_code}")
         return jsonify({"valid": True, "reason": "success"}), 200
         
     except Exception as e:
         print(f"[CHECK] ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"valid": False, "reason": "Server error. Please try again"}), 200
+        return jsonify({"valid": False, "reason": "Server error"}), 200
     finally:
         if conn:
             try:
@@ -121,71 +134,165 @@ def check():
             except:
                 pass
 
-def init_db():
-    print("[DB] Initializing Database...")
-    try:
-        conn = sqlite3.connect("vanity.db", timeout=10)
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS keys (
-            key TEXT PRIMARY KEY,
-            duration TEXT,
-            expiration TIMESTAMP,
-            is_redeemed INTEGER DEFAULT 0,
-            redeemed_by INTEGER,
-            hwid TEXT
-        )''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS blacklists (
-            user_id INTEGER PRIMARY KEY
-        )''')
-        conn.commit()
-        
-        cursor.execute("SELECT COUNT(*) FROM keys")
-        key_count = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM blacklists")
-        blacklist_count = cursor.fetchone()[0]
-        
-        conn.close()
-        print(f"[DB] Database ready - {key_count} keys, {blacklist_count} blacklisted users")
-    except Exception as e:
-        print(f"[DB] ERROR: Failed to initialize database: {e}")
-        import traceback
-        traceback.print_exc()
+# Discord bot commands
+async def check_security(interaction: discord.Interaction):
+    owner_name = os.getenv('OWNER_NAME', 'y9pv')
+    cursor = bot.db.cursor()
+    cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+    if cursor.fetchone():
+        await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+        return False
+    if interaction.user.name != owner_name:
+        await interaction.response.send_message(f"❌ user mismatch (expected {owner_name})", ephemeral=True)
+        return False
+    has_role = discord.utils.get(interaction.user.roles, name="Owner")
+    if not has_role:
+        await interaction.response.send_message("❌ role mismatch", ephemeral=True)
+        return False
+    return True
 
-def run_discord_bot():
-    """Run Discord bot in background thread"""
-    print("[BOT] Starting Discord Bot...")
-    try:
-        TOKEN = os.getenv('DISCORD_TOKEN')
-        if not TOKEN:
-            print("[BOT] WARNING: DISCORD_TOKEN not found")
-            return
-        
-        # Create new event loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Import and run bot
-        from discord_bot import bot
-        loop.run_until_complete(bot.start(TOKEN))
-    except Exception as e:
-        print(f"[BOT] Error: {e}")
-        import traceback
-        traceback.print_exc()
+def generate_key_string():
+    return "VANITY-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
+
+@bot.event
+async def on_ready():
+    print(f'✅ Bot online as {bot.user}')
+
+class RedeemModal(discord.ui.Modal, title="Redeem Your Key"):
+    key_input = discord.ui.TextInput(label="Enter License Key", placeholder="VANITY-XXXX-XXXX-XXXX", min_length=10, max_length=50, required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        key_code = self.key_input.value
+        cursor = bot.db.cursor()
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+        if cursor.fetchone():
+            return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+        cursor.execute("SELECT key, is_redeemed, expiration, redeemed_by FROM keys WHERE key = ?", (key_code,))
+        row = cursor.fetchone()
+        if not row:
+            return await interaction.response.send_message("❌ Invalid key.", ephemeral=True)
+        if row[1] == 1 and row[3] != interaction.user.id:
+            return await interaction.response.send_message("❌ Key already redeemed by another user.", ephemeral=True)
+        if row[1] == 1 and row[3] == interaction.user.id:
+            return await interaction.response.send_message("✅ You already redeemed this key.", ephemeral=True)
+        cursor.execute("UPDATE keys SET is_redeemed = 1, redeemed_by = ? WHERE key = ?", (interaction.user.id, key_code))
+        bot.db.commit()
+        await interaction.response.send_message("✅ Successfully redeemed key!", ephemeral=True)
+
+class VanityPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(label="Redeem Key", style=discord.ButtonStyle.danger, custom_id="vanity:redeem")
+    async def redeem_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(RedeemModal())
+    
+    @discord.ui.button(label="Get Key", style=discord.ButtonStyle.secondary, custom_id="vanity:get_key")
+    async def get_key_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cursor = bot.db.cursor()
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+        if cursor.fetchone():
+            return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+        cursor.execute("SELECT key FROM keys WHERE redeemed_by = ?", (interaction.user.id,))
+        if not cursor.fetchone():
+            return await interaction.response.send_message("❌ You need to redeem a key first.", ephemeral=True)
+        await interaction.response.send_message(f"```lua\nPrint(\"vanitynotoutyetlmao\")\n```", ephemeral=True)
+    
+    @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary, custom_id="vanity:reset_hwid")
+    async def reset_hwid_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cursor = bot.db.cursor()
+        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
+        if cursor.fetchone():
+            return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
+        cursor.execute("SELECT key FROM keys WHERE redeemed_by = ?", (interaction.user.id,))
+        if not cursor.fetchone():
+            return await interaction.response.send_message("❌ You need to redeem a key first.", ephemeral=True)
+        await interaction.response.send_message("✅ Your key HWID has been reset.", ephemeral=True)
+
+@bot.tree.command(name="scriptpanel", description="Vanity Script management panel (Owner Only)")
+async def scriptpanel(interaction: discord.Interaction):
+    if not await check_security(interaction): return
+    embed = discord.Embed(
+        title="Vanity Script | Control Panel",
+        description="Welcome to the Vanity management interface.\n\n**Available Actions:**\n> Redeem Key: Activate your subscription.\n> Get Key: Information on how to obtain access.\n> Reset HWID: Resets ur key hwid.\n\n*Status: System Operational*",
+        color=discord.Color.from_rgb(255, 0, 0),
+        timestamp=datetime.datetime.now()
+    )
+    embed.set_footer(text="Vanity Exploit • Premium Security", icon_url=bot.user.display_avatar.url)
+    await interaction.response.send_message(embed=embed, view=VanityPanelView())
+
+@bot.tree.command(name="generatescript", description="Generates a Vanity key (Owner Only)")
+@app_commands.describe(member="The member to generate a key for", value="Number of units", unit="The unit of time", destination="Where to send the key")
+async def generatescript(interaction: discord.Interaction, member: discord.Member, value: int = 1, unit: str = "lifetime", destination: str = "channel"):
+    if not await check_security(interaction): return
+    new_key = generate_key_string()
+    expiration = None
+    if unit.lower() != "lifetime":
+        now = datetime.datetime.now()
+        if unit == "minutes": expiration = now + timedelta(minutes=value)
+        elif unit == "hours": expiration = now + timedelta(hours=value)
+        elif unit == "weeks": expiration = now + timedelta(weeks=value)
+        elif unit == "months": expiration = now + timedelta(days=value*30)
+    cursor = bot.db.cursor()
+    cursor.execute("INSERT INTO keys (key, duration, expiration, is_redeemed, hwid) VALUES (?, ?, ?, ?, ?)", (new_key, f"{value} {unit}", expiration, 0, None))
+    bot.db.commit()
+    msg = f"Generated a Vanity key for {member.mention}\nKey: `{new_key}`\nDuration: **{value} {unit}**"
+    if destination == "dm":
+        try:
+            await member.send(msg)
+            await interaction.response.send_message(f"✅ Key sent to {member.mention}'s DMs.", ephemeral=True)
+        except:
+            await interaction.response.send_message(f"❌ Failed to DM. Key: `{new_key}`", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"{interaction.user.mention} generated a vanity key for {member.mention}\n`{new_key}`")
+
+@bot.tree.command(name="blacklist", description="Blacklists a user (Owner Only)")
+async def blacklist(interaction: discord.Interaction, member: discord.Member):
+    if not await check_security(interaction): return
+    cursor = bot.db.cursor()
+    cursor.execute("INSERT OR IGNORE INTO blacklists (user_id) VALUES (?)", (member.id,))
+    cursor.execute("DELETE FROM keys WHERE redeemed_by = ?", (member.id,))
+    bot.db.commit()
+    await interaction.response.send_message(f"🚫 **{member}** has been blacklisted.")
+
+@bot.tree.command(name="unblacklist", description="Unblacklist a user (Owner Only)")
+async def unblacklist(interaction: discord.Interaction, user: discord.Member):
+    if not await check_security(interaction): return
+    cursor = bot.db.cursor()
+    cursor.execute("DELETE FROM blacklists WHERE user_id = ?", (user.id,))
+    bot.db.commit()
+    await interaction.response.send_message(f"✅ {user.mention} has been unblacklisted.", ephemeral=True)
+
+@bot.tree.command(name="resethwid", description="Reset the HWID bound to a key (Owner Only)")
+async def resethwid(interaction: discord.Interaction, key: str):
+    if not await check_security(interaction): return
+    cursor = bot.db.cursor()
+    cursor.execute("SELECT is_redeemed FROM keys WHERE key = ?", (key,))
+    if not cursor.fetchone():
+        return await interaction.response.send_message("❌ Key not found.", ephemeral=True)
+    cursor.execute("UPDATE keys SET hwid = NULL WHERE key = ?", (key,))
+    bot.db.commit()
+    await interaction.response.send_message(f"✅ HWID for key `{key}` has been reset.", ephemeral=True)
+
+def run_flask():
+    """Run Flask API in background thread"""
+    port = int(os.getenv('PORT', 8080))
+    print(f"[API] Starting Flask on port {port}")
+    app.run(host='0.0.0.0', port=port, threaded=True, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
     print("=" * 50)
     print("VANITY API + DISCORD BOT")
     print("=" * 50)
     
-    init_db()
+    # Start Flask in background thread
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
     
-    # Start Discord bot in background thread
-    bot_thread = Thread(target=run_discord_bot, daemon=True)
-    bot_thread.start()
-    print("[BOT] Started in background thread")
-    
-    port = int(os.getenv('PORT', 8080))
-    print(f"[API] Server starting on port {port}")
-    print("=" * 50)
-    
-    app.run(host='0.0.0.0', port=port, threaded=True, debug=False)
+    # Run Discord bot in main thread
+    TOKEN = os.getenv('DISCORD_TOKEN')
+    if TOKEN:
+        print("[BOT] Starting Discord bot...")
+        bot.run(TOKEN)
+    else:
+        print("❌ DISCORD_TOKEN not found!")

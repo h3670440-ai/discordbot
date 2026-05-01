@@ -3,12 +3,10 @@ COPY AND PASTE THESE COMMANDS TO DEPLOY
 =================================================================
 
 Step 1: Navigate to botstuff folder
------------------------------------
 cd botstuff
 
 
 Step 2: Initialize Git and Push to GitHub
-------------------------------------------
 git init
 git add .
 git commit -m "Initial commit - Vanity bot"
@@ -20,7 +18,6 @@ git push -u origin main
 
 
 Step 3: Deploy to Railway
---------------------------
 1. Go to: https://railway.app
 2. Click "New Project"
 3. Select "Deploy from GitHub repo"
@@ -29,7 +26,6 @@ Step 3: Deploy to Railway
 
 
 Step 4: Set Environment Variables in Railway
----------------------------------------------
 Go to Railway Dashboard → Your Service → Variables tab
 
 Add these three variables:
@@ -39,25 +35,14 @@ OWNER_NAME = your_discord_username_here
 PORT = 8080
 
 
-Step 5: Test the API
----------------------
-Open in browser:
-https://your-project.up.railway.app/
+Step 5: Test Everything
+Test API: https://your-project.up.railway.app/
+Test Discord Bot: Go to Discord and type /scriptpanel
 
-Should show:
-{"status": "online", "service": "Vanity API", ...}
+Both API and bot run together on Railway!
 
 
-Step 6: Run Discord Bot Locally
---------------------------------
-cd botstuff
-python discord_bot.py
-
-(Keep this terminal open)
-
-
-Step 7: Generate and Redeem Key in Discord
--------------------------------------------
+Step 6: Generate and Redeem Key in Discord
 In Discord:
 /generatescript @YourUsername 1 lifetime channel
 
@@ -67,14 +52,12 @@ Copy the key, then:
 Click "Redeem Key" → Paste key → Submit
 
 
-Step 8: Update Roblox Config
------------------------------
+Step 7: Update Roblox Config
 Edit vanityconfig.lua:
 ['Key'] = "VANITY-XXXXXXXXXXXX",
 
 
-Step 9: Load Script in Roblox
-------------------------------
+Step 8: Load Script in Roblox
 Execute the script - it should work!
 
 
@@ -102,9 +85,10 @@ API not responding?
 - Verify environment variables are set
 
 Bot not working?
-- Make sure python discord_bot.py is running
-- Check DISCORD_TOKEN is correct
-- Verify you have "Owner" role in Discord
+- Check Railway logs for bot startup message
+- Verify DISCORD_TOKEN is correct
+- Make sure you have "Owner" role in Discord
+- Your Discord username must match OWNER_NAME
 
 Script gets kicked?
 - Make sure you REDEEMED the key in Discord first
@@ -113,5 +97,5 @@ Script gets kicked?
 
 
 =================================================================
-YOU'RE DONE!
+EVERYTHING RUNS ON RAILWAY - NO LOCAL SETUP NEEDED!
 =================================================================

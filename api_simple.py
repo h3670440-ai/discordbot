@@ -1,11 +1,12 @@
 """
-Simplified API that focuses on just the Flask server
-Run the Discord bot separately if needed
+Combined API and Discord Bot - Runs both together on Railway
 """
 from flask import Flask, request, jsonify
 import sqlite3
 import os
 import datetime
+import asyncio
+from threading import Thread
 
 app = Flask(__name__)
 
@@ -150,19 +151,41 @@ def init_db():
         import traceback
         traceback.print_exc()
 
+def run_discord_bot():
+    """Run Discord bot in background thread"""
+    print("[BOT] Starting Discord Bot...")
+    try:
+        TOKEN = os.getenv('DISCORD_TOKEN')
+        if not TOKEN:
+            print("[BOT] WARNING: DISCORD_TOKEN not found")
+            return
+        
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Import and run bot
+        from discord_bot import bot
+        loop.run_until_complete(bot.start(TOKEN))
+    except Exception as e:
+        print(f"[BOT] Error: {e}")
+        import traceback
+        traceback.print_exc()
+
 if __name__ == '__main__':
     print("=" * 50)
-    print("VANITY API SERVER (SIMPLE MODE)")
-    print("=" * 50)
-    print("NOTE: Run discord_bot.py separately for Discord functionality")
+    print("VANITY API + DISCORD BOT")
     print("=" * 50)
     
     init_db()
     
+    # Start Discord bot in background thread
+    bot_thread = Thread(target=run_discord_bot, daemon=True)
+    bot_thread.start()
+    print("[BOT] Started in background thread")
+    
     port = int(os.getenv('PORT', 8080))
     print(f"[API] Server starting on port {port}")
-    print(f"[API] Health check: http://0.0.0.0:{port}/")
-    print(f"[API] Test endpoint: http://0.0.0.0:{port}/test")
     print("=" * 50)
     
     app.run(host='0.0.0.0', port=port, threaded=True, debug=False)

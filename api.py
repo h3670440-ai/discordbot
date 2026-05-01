@@ -8,6 +8,10 @@ import datetime
 
 app = Flask(__name__)
 
+@app.route('/')
+def health():
+    return "OK", 200
+
 @app.route('/check', methods=['GET'])
 def check():
     key_code = request.args.get('key')
@@ -95,11 +99,22 @@ def init_db():
 
 def run_bot():
     print("API: Starting Discord Bot...")
-    subprocess.run(["python", "bot.py"])
+    try:
+        # Use sys.executable to ensure we use the same python interpreter
+        import sys
+        subprocess.run([sys.executable, "bot.py"])
+    except Exception as e:
+        print(f"API: Bot failed to start: {e}")
 
 if __name__ == '__main__':
     init_db()
-    threading.Thread(target=run_bot, daemon=True).start()
+    
+    # Start bot in background
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    
     port = int(os.getenv('PORT', 8080))
     print(f"API: Listening on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    
+    # Use threaded=True to handle concurrent requests better
+    app.run(host='0.0.0.0', port=port, threaded=True)

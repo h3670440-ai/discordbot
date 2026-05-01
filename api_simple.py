@@ -16,6 +16,10 @@ from datetime import timedelta
 
 app = Flask(__name__)
 
+# Import script hosting routes
+from script_host import add_script_hosting_routes
+add_script_hosting_routes(app)
+
 # Initialize Discord bot
 intents = discord.Intents.default()
 intents.members = True

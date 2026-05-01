@@ -40,6 +40,11 @@ class VanityBot(commands.Bot):
         cursor.execute('''CREATE TABLE IF NOT EXISTS blacklists (
             user_id INTEGER PRIMARY KEY
         )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS kick_queue (
+            key TEXT PRIMARY KEY,
+            message TEXT,
+            timestamp TIMESTAMP
+        )''')
         self.db.commit()
         await self.tree.sync()
         print(f"✅ Discord bot ready and synced!")
@@ -91,6 +96,18 @@ def check():
         
         conn = sqlite3.connect("vanity.db", timeout=10)
         cursor = conn.cursor()
+        
+        # Check if key is in kick queue
+        cursor.execute("SELECT message FROM kick_queue WHERE key = ?", (key_code,))
+        kick_row = cursor.fetchone()
+        if kick_row:
+            kick_message = kick_row[0]
+            # Remove from kick queue after kicking
+            cursor.execute("DELETE FROM kick_queue WHERE key = ?", (key_code,))
+            conn.commit()
+            print(f"[CHECK] Key {key_code} is in kick queue")
+            return jsonify({"valid": False, "reason": kick_message, "kicked": True}), 200
+        
         cursor.execute("SELECT is_redeemed, redeemed_by, hwid, expiration FROM keys WHERE key = ?", (key_code,))
         row = cursor.fetchone()
         
@@ -273,6 +290,103 @@ async def resethwid(interaction: discord.Interaction, key: str):
     cursor.execute("UPDATE keys SET hwid = NULL WHERE key = ?", (key,))
     bot.db.commit()
     await interaction.response.send_message(f"✅ HWID for key `{key}` has been reset.", ephemeral=True)
+
+@bot.tree.command(name="renewkey", description="Renew an expired key (Owner Only)")
+@app_commands.describe(key="The key to renew", value="Number of units", unit="The unit of time")
+async def renewkey(interaction: discord.Interaction, key: str, value: int = 1, unit: str = "lifetime"):
+    if not await check_security(interaction): return
+    cursor = bot.db.cursor()
+    cursor.execute("SELECT key, expiration FROM keys WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    
+    if not row:
+        return await interaction.response.send_message("❌ Key not found.", ephemeral=True)
+    
+    # Calculate new expiration
+    expiration = None
+    if unit.lower() != "lifetime":
+        now = datetime.datetime.now()
+        if unit == "minutes": expiration = now + timedelta(minutes=value)
+        elif unit == "hours": expiration = now + timedelta(hours=value)
+        elif unit == "days": expiration = now + timedelta(days=value)
+        elif unit == "weeks": expiration = now + timedelta(weeks=value)
+        elif unit == "months": expiration = now + timedelta(days=value*30)
+    
+    cursor.execute("UPDATE keys SET expiration = ?, duration = ? WHERE key = ?", (expiration, f"{value} {unit}", key))
+    bot.db.commit()
+    
+    exp_text = expiration.strftime("%Y-%m-%d %H:%M:%S") if expiration else "Lifetime"
+    await interaction.response.send_message(f"✅ Key `{key}` renewed!\nNew Duration: **{value} {unit}**\nExpires: {exp_text}", ephemeral=True)
+
+@bot.tree.command(name="searchuserforkey", description="Search all keys for a user (Owner Only)")
+@app_commands.describe(user="The user to search keys for")
+async def searchuserforkey(interaction: discord.Interaction, user: discord.Member):
+    if not await check_security(interaction): return
+    cursor = bot.db.cursor()
+    
+    # Get all keys for this user
+    cursor.execute("SELECT key, duration, expiration, is_redeemed, hwid FROM keys WHERE redeemed_by = ?", (user.id,))
+    user_keys = cursor.fetchall()
+    
+    # Get all keys generated (not necessarily redeemed by this user)
+    cursor.execute("SELECT key, duration, expiration, is_redeemed, redeemed_by, hwid FROM keys")
+    all_keys = cursor.fetchall()
+    
+    embed = discord.Embed(
+        title=f"🔍 Keys for {user.display_name}",
+        color=discord.Color.blue(),
+        timestamp=datetime.datetime.now()
+    )
+    
+    if user_keys:
+        redeemed_text = ""
+        for key, duration, expiration, is_redeemed, hwid in user_keys:
+            status = "✅ Active" if is_redeemed == 1 else "❌ Not Redeemed"
+            exp_text = expiration if expiration else "Lifetime"
+            hwid_text = hwid if hwid else "Not bound"
+            redeemed_text += f"**Key:** `{key}`\n**Duration:** {duration}\n**Expires:** {exp_text}\n**Status:** {status}\n**HWID:** {hwid_text}\n\n"
+        
+        embed.add_field(name=f"Keys Redeemed by {user.display_name} ({len(user_keys)})", value=redeemed_text[:1024], inline=False)
+    else:
+        embed.add_field(name="Keys Redeemed", value="No keys redeemed by this user.", inline=False)
+    
+    embed.set_footer(text=f"User ID: {user.id}")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="kickplayer", description="Kick a player from the game (Owner Only)")
+@app_commands.describe(key="The key of the player to kick", message="Custom kick message (optional)")
+async def kickplayer(interaction: discord.Interaction, key: str, message: str = "You have been kicked by an administrator"):
+    if not await check_security(interaction): return
+    cursor = bot.db.cursor()
+    
+    # Find the key and mark it for kick
+    cursor.execute("SELECT key, redeemed_by, is_redeemed FROM keys WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    
+    if not row:
+        return await interaction.response.send_message("❌ Key not found.", ephemeral=True)
+    
+    if row[2] == 0:
+        return await interaction.response.send_message("❌ This key hasn't been redeemed yet.", ephemeral=True)
+    
+    # Store kick message in a new table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS kick_queue (
+        key TEXT PRIMARY KEY,
+        message TEXT,
+        timestamp TIMESTAMP
+    )''')
+    
+    cursor.execute("INSERT OR REPLACE INTO kick_queue (key, message, timestamp) VALUES (?, ?, ?)", 
+                   (key, message, datetime.datetime.now()))
+    bot.db.commit()
+    
+    user_id = row[1]
+    user_mention = f"<@{user_id}>" if user_id else "Unknown user"
+    
+    await interaction.response.send_message(
+        f"✅ Kick queued for key `{key}`\n**User:** {user_mention}\n**Message:** {message}\n\n*Player will be kicked on next script verification*",
+        ephemeral=True
+    )
 
 def run_flask():
     """Run Flask API in background thread"""

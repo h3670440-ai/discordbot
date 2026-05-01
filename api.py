@@ -14,19 +14,20 @@ def health():
 
 @app.route('/check', methods=['GET'])
 def check():
-    key_code = request.args.get('key')
-    hwid = request.args.get('hwid')
-    
-    print(f"API: Request for key='{key_code}', hwid='{hwid}'")
-    
-    if not key_code or not hwid:
-        return jsonify({"valid": False, "reason": "Missing key or HWID"}), 400
-    
-    key_code = key_code.strip()
-    hwid = hwid.strip()
-    
+    conn = None
     try:
-        conn = sqlite3.connect("vanity.db")
+        key_code = request.args.get('key')
+        hwid = request.args.get('hwid')
+        
+        print(f"API: Request for key='{key_code}', hwid='{hwid}'")
+        
+        if not key_code or not hwid:
+            return jsonify({"valid": False, "reason": "Missing key or HWID"}), 200
+        
+        key_code = key_code.strip()
+        hwid = hwid.strip()
+        
+        conn = sqlite3.connect("vanity.db", timeout=10)
         cursor = conn.cursor()
         
         # Check if key exists
@@ -34,49 +35,52 @@ def check():
         row = cursor.fetchone()
         
         if not row:
-            conn.close()
             return jsonify({"valid": False, "reason": "Invalid key"}), 200
         
         is_redeemed, user_id, saved_hwid, expiration = row
         
+        # Check if key has been redeemed
+        if is_redeemed == 0:
+            return jsonify({"valid": False, "reason": "Key not redeemed. Please redeem your key first"}), 200
+        
         # Check Expiration
-        if expiration is not None:
-            # SQLite stores datetime as string. Convert to datetime object.
-            # Format usually 'YYYY-MM-DD HH:MM:SS.mmmmmm'
+        if expiration is not None and expiration != "":
             try:
                 exp_dt = datetime.datetime.fromisoformat(expiration)
                 if datetime.datetime.now() > exp_dt:
-                    conn.close()
                     return jsonify({"valid": False, "reason": "Key expired"}), 200
-            except:
-                pass # If parsing fails, assume lifetime or malformed
-        
-        if is_redeemed == 0:
-            conn.close()
-            return jsonify({"valid": False, "reason": "Key not redeemed. Please redeem your key first"}), 200
+            except Exception as e:
+                print(f"API: Expiration parse error: {e}")
+                pass # If parsing fails, assume lifetime
         
         # Check blacklist
-        cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))
-        if cursor.fetchone():
-            conn.close()
-            return jsonify({"valid": False, "reason": "Blacklisted user"}), 200
+        if user_id is not None:
+            cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))
+            if cursor.fetchone():
+                return jsonify({"valid": False, "reason": "Blacklisted user"}), 200
             
         # Check HWID
-        if saved_hwid is None:
+        if saved_hwid is None or saved_hwid == "":
             # Bind HWID on first use
             cursor.execute("UPDATE keys SET hwid = ? WHERE key = ?", (hwid, key_code))
             conn.commit()
             print(f"API: Bound key {key_code} to HWID {hwid}")
         elif saved_hwid != hwid:
-            conn.close()
-            return jsonify({"valid": False, "reason": "HWID mismatch"}), 200
+            return jsonify({"valid": False, "reason": "HWID mismatch. Use /resethwid to reset"}), 200
             
-        conn.close()
         return jsonify({"valid": True, "reason": "success"}), 200
         
     except Exception as e:
         print(f"API Error: {e}")
-        return jsonify({"valid": False, "reason": f"Internal server error: {e}"}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({"valid": False, "reason": "Server error. Please try again"}), 200
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 def init_db():
     print("API: Initializing Database...")

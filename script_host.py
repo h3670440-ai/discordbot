@@ -552,12 +552,15 @@ ADMIN_TEMPLATE = """
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #0a0a0a;
             min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             padding: 20px;
         }
 
         .container {
             max-width: 900px;
-            margin: 0 auto;
+            width: 100%;
             background: rgba(15, 15, 15, 0.95);
             border: 1px solid rgba(138, 43, 226, 0.3);
             border-radius: 20px;
@@ -569,11 +572,13 @@ ADMIN_TEMPLATE = """
             color: #8a2be2;
             margin-bottom: 10px;
             font-size: 36px;
+            text-align: center;
         }
 
         .subtitle {
             color: #666;
             margin-bottom: 30px;
+            text-align: center;
         }
 
         .form-group {
@@ -595,6 +600,13 @@ ADMIN_TEMPLATE = """
             border-radius: 10px;
             color: #fff;
             font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input[type="password"]:focus {
+            border-color: #8a2be2;
+            box-shadow: 0 0 20px rgba(138, 43, 226, 0.4);
         }
 
         textarea {
@@ -608,9 +620,17 @@ ADMIN_TEMPLATE = """
             font-family: 'Courier New', monospace;
             font-size: 14px;
             resize: vertical;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus {
+            border-color: #8a2be2;
+            box-shadow: 0 0 20px rgba(138, 43, 226, 0.4);
         }
 
         button {
+            width: 100%;
             padding: 15px 40px;
             background: linear-gradient(135deg, #8a2be2 0%, #9370db 100%);
             color: white;
@@ -634,6 +654,7 @@ ADMIN_TEMPLATE = """
             padding: 15px;
             border-radius: 10px;
             display: none;
+            text-align: center;
         }
 
         .success {
@@ -667,6 +688,29 @@ ADMIN_TEMPLATE = """
             padding: 2px 8px;
             border-radius: 5px;
             color: #9370db;
+            word-break: break-all;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loginForm {
+            text-align: center;
+        }
+
+        #editorForm {
+            display: none;
         }
     </style>
 </head>
@@ -675,34 +719,90 @@ ADMIN_TEMPLATE = """
         <h1>🔧 Vanity Admin Panel</h1>
         <p class="subtitle">Upload and manage your Lua script</p>
 
-        <div class="info">
-            <strong>📝 Your Script URL:</strong>
-            <code>{{ script_url }}</code>
-            <br><br>
-            <strong>📋 Loadstring:</strong>
-            <code>loadstring(game:HttpGet("{{ script_url }}"))();</code>
+        <!-- Login Form -->
+        <div id="loginForm">
+            <div class="form-group">
+                <label>Admin Password:</label>
+                <input type="password" id="loginPassword" placeholder="Enter admin password">
+            </div>
+            <button onclick="login()">
+                <span id="loginBtnText">ACCESS ADMIN PANEL</span>
+            </button>
+            <div id="loginMessage" class="message"></div>
         </div>
 
-        <div class="form-group">
-            <label>Admin Password:</label>
-            <input type="password" id="adminPassword" placeholder="Enter admin password">
+        <!-- Editor Form (hidden until login) -->
+        <div id="editorForm">
+            <div class="info">
+                <strong>📝 Your Script URL:</strong>
+                <code>{{ script_url }}</code>
+                <br><br>
+                <strong>📋 Loadstring:</strong>
+                <code>loadstring(game:HttpGet("{{ script_url }}"))();</code>
+            </div>
+
+            <div class="form-group">
+                <label>Lua Script Source Code:</label>
+                <textarea id="scriptContent" placeholder="Paste your Lua script here..."></textarea>
+            </div>
+
+            <button onclick="publishScript()">
+                <span id="publishBtnText">PUBLISH SCRIPT</span>
+            </button>
+
+            <div id="message" class="message"></div>
         </div>
-
-        <div class="form-group">
-            <label>Lua Script Source Code:</label>
-            <textarea id="scriptContent" placeholder="Paste your Lua script here...">{{ current_script }}</textarea>
-        </div>
-
-        <button onclick="publishScript()">PUBLISH SCRIPT</button>
-
-        <div id="message" class="message"></div>
     </div>
 
     <script>
+        let adminPassword = '';
+
+        function login() {
+            const password = document.getElementById('loginPassword').value;
+            const btnText = document.getElementById('loginBtnText');
+            const message = document.getElementById('loginMessage');
+            
+            btnText.innerHTML = '<span class="loading"></span>';
+            
+            // Verify password and load current script
+            fetch('/api/admin/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ password: password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                btnText.textContent = 'ACCESS ADMIN PANEL';
+                if (data.success) {
+                    adminPassword = password;
+                    document.getElementById('scriptContent').value = data.script;
+                    message.innerHTML = '<div class="success">✓ Access Granted</div>';
+                    message.style.display = 'block';
+                    setTimeout(() => {
+                        document.getElementById('loginForm').style.display = 'none';
+                        document.getElementById('editorForm').style.display = 'block';
+                    }, 500);
+                } else {
+                    message.innerHTML = '<div class="error">✗ Invalid Password</div>';
+                    message.style.display = 'block';
+                    document.getElementById('loginPassword').value = '';
+                }
+            })
+            .catch(error => {
+                btnText.textContent = 'ACCESS ADMIN PANEL';
+                message.innerHTML = '<div class="error">✗ Connection Error</div>';
+                message.style.display = 'block';
+            });
+        }
+
         function publishScript() {
-            const password = document.getElementById('adminPassword').value;
             const content = document.getElementById('scriptContent').value;
             const message = document.getElementById('message');
+            const btnText = document.getElementById('publishBtnText');
+            
+            btnText.innerHTML = '<span class="loading"></span>';
 
             fetch('/api/admin/publish', {
                 method: 'POST',
@@ -710,12 +810,13 @@ ADMIN_TEMPLATE = """
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    password: password,
+                    password: adminPassword,
                     content: content
                 })
             })
             .then(response => response.json())
             .then(data => {
+                btnText.textContent = 'PUBLISH SCRIPT';
                 message.style.display = 'block';
                 if (data.success) {
                     message.className = 'message success';
@@ -726,11 +827,19 @@ ADMIN_TEMPLATE = """
                 }
             })
             .catch(error => {
+                btnText.textContent = 'PUBLISH SCRIPT';
                 message.style.display = 'block';
                 message.className = 'message error';
                 message.textContent = '✗ Connection error';
             });
         }
+
+        // Allow Enter key to submit
+        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
     </script>
 </body>
 </html>
@@ -753,18 +862,27 @@ def add_script_hosting_routes(app):
     def admin_page():
         """Serve the admin panel for uploading scripts"""
         script_url = request.host_url + 'api/script/raw'
-        return render_template_string(ADMIN_TEMPLATE, 
-                                     script_url=script_url,
-                                     current_script=SCRIPT_CONTENT)
+        return render_template_string(ADMIN_TEMPLATE, script_url=script_url)
     
     @app.route('/api/authenticate', methods=['POST'])
     def authenticate():
-        """Authenticate password"""
+        """Authenticate password for user page"""
         data = request.get_json()
         password = data.get('password', '')
         
         if password == SCRIPT_PASSWORD:
             return jsonify({"success": True})
+        else:
+            return jsonify({"success": False})
+    
+    @app.route('/api/admin/verify', methods=['POST'])
+    def verify_admin():
+        """Verify admin password and return current script"""
+        data = request.get_json()
+        password = data.get('password', '')
+        
+        if password == ADMIN_PASSWORD:
+            return jsonify({"success": True, "script": SCRIPT_CONTENT})
         else:
             return jsonify({"success": False})
     

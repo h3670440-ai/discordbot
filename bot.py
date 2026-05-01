@@ -101,16 +101,21 @@ class RedeemModal(discord.ui.Modal, title="Redeem Your Key"):
         if cursor.fetchone():
             return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
 
-        cursor.execute("SELECT key, is_redeemed, expiration FROM keys WHERE key = ?", (key_code,))
+        cursor.execute("SELECT key, is_redeemed, expiration, redeemed_by FROM keys WHERE key = ?", (key_code,))
         row = cursor.fetchone()
         
         if not row:
             return await interaction.response.send_message("❌ Invalid key.", ephemeral=True)
         
-        if row[1] == 1:
-            return await interaction.response.send_message("❌ This key has already been redeemed.", ephemeral=True)
+        # Check if already redeemed by someone else
+        if row[1] == 1 and row[3] != interaction.user.id:
+            return await interaction.response.send_message("❌ This key has already been redeemed by another user.", ephemeral=True)
+        
+        # Check if already redeemed by this user
+        if row[1] == 1 and row[3] == interaction.user.id:
+            return await interaction.response.send_message("✅ You have already redeemed this key. Your subscription is active.", ephemeral=True)
 
-        # Update DB
+        # Update DB - Mark as redeemed
         cursor.execute("UPDATE keys SET is_redeemed = 1, redeemed_by = ? WHERE key = ?", (interaction.user.id, key_code))
         bot.db.commit()
         
@@ -328,8 +333,9 @@ async def resethwid(interaction: discord.Interaction, key: str):
     bot.db.commit()
     await interaction.response.send_message(f"✅ HWID for key `{key}` has been reset.", ephemeral=True)
 
-# Run the bot
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("⚠️ DISCORD_TOKEN not found in variables. Please add it to start the bot.")
+# Run the bot only if this file is executed directly
+if __name__ == "__main__":
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("⚠️ DISCORD_TOKEN not found in environment variables. Please add it to start the bot.")

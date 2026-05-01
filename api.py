@@ -74,11 +74,31 @@ def check():
         print(f"API Error: {e}")
         return jsonify({"valid": False, "reason": f"Internal server error: {e}"}), 500
 
+def init_db():
+    print("API: Initializing Database...")
+    conn = sqlite3.connect("vanity.db")
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS keys (
+        key TEXT PRIMARY KEY,
+        duration TEXT,
+        expiration TIMESTAMP,
+        is_redeemed INTEGER DEFAULT 0,
+        redeemed_by INTEGER,
+        hwid TEXT
+    )''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS blacklists (
+        user_id INTEGER PRIMARY KEY
+    )''')
+    conn.commit()
+    conn.close()
+    print("API: Database ready.")
+
 def run_bot():
     print("API: Starting Discord Bot...")
     subprocess.run(["python", "bot.py"])
 
 if __name__ == '__main__':
+    init_db()
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.getenv('PORT', 8080))
     print(f"API: Listening on port {port}")

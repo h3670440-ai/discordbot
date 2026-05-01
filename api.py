@@ -53,7 +53,7 @@ def check():
         
         if is_redeemed == 0:
             conn.close()
-            return jsonify({"valid": False, "reason": "Key not redeemed yet"}), 200
+            return jsonify({"valid": False, "reason": "Key not redeemed. Please redeem your key first"}), 200
         
         # Check blacklist
         cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (user_id,))

@@ -341,9 +341,11 @@ class VanityPanelView(discord.ui.View):
         if cursor.fetchone():
             return await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
         cursor.execute("SELECT key FROM keys WHERE redeemed_by = ?", (interaction.user.id,))
-        if not cursor.fetchone():
+        row = cursor.fetchone()
+        if not row:
             return await interaction.response.send_message("❌ You need to redeem a key first.", ephemeral=True)
-        await interaction.response.send_message(f"```lua\nPrint(\"vanitynotoutyetlmao\")\n```", ephemeral=True)
+        user_key = row[0]
+        await interaction.response.send_message(f"✅ **Your Redeemed Key:**\n```\n{user_key}\n```", ephemeral=True)
     
     @discord.ui.button(label="Reset HWID", style=discord.ButtonStyle.secondary, custom_id="vanity:reset_hwid")
     async def reset_hwid_button(self, interaction: discord.Interaction, button: discord.ui.Button):

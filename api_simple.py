@@ -283,14 +283,14 @@ def report_job():
 
 # Discord bot commands
 async def check_security(interaction: discord.Interaction):
-    owner_name = os.getenv('OWNER_NAME', 'y9pv')
+    owner_name = os.getenv('OWNER_NAME', 'y9pv').strip().lower()
     cursor = bot.db.cursor()
     cursor.execute("SELECT user_id FROM blacklists WHERE user_id = ?", (interaction.user.id,))
     if cursor.fetchone():
         await interaction.response.send_message("❌ You are blacklisted.", ephemeral=True)
         return False
-    if interaction.user.name != owner_name:
-        await interaction.response.send_message(f"❌ user mismatch (expected {owner_name})", ephemeral=True)
+    if interaction.user.name.lower() != owner_name:
+        await interaction.response.send_message(f"❌ user mismatch (your username: '{interaction.user.name}', expected: '{owner_name}')", ephemeral=True)
         return False
     has_role = discord.utils.get(interaction.user.roles, name="Owner")
     if not has_role:

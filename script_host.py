@@ -425,8 +425,8 @@ HTML_TEMPLATE = """
 
         <div id="scriptContent" style="display: none;">
             <div class="script-info">
-                <h3>🎯 Vanity Script</h3>
-                <p><strong>Status:</strong> <span class="status-badge">✓ Active</span></p>
+                <h3>ðŸŽ¯ Vanity Script</h3>
+                <p><strong>Status:</strong> <span class="status-badge">âœ“ Active</span></p>
                 <p><strong>Version:</strong> Latest</p>
                 <p><strong>Last Updated:</strong> {{ timestamp }}</p>
                 
@@ -434,7 +434,7 @@ HTML_TEMPLATE = """
                     <strong style="color: #8a2be2;">Loadstring:</strong>
                     <div class="code-block">
                         <button class="copy-btn" onclick="copyLoadstring()">Copy</button>
-                        <code id="loadstring">loadstring(game:HttpGet("{{ script_url }}"))();</code>
+                        <code id="loadstring">loadstring(game:HttpGet("{{ script_url }}", true, {["Vanity-Auth"] = "{{ script_password }}"}))();</code>
                     </div>
                 </div>
 
@@ -453,7 +453,7 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="footer">
-            Vanity © 2026 | <a href="{{ discord_invite }}" target="_blank">Join Discord</a>
+            Vanity Â© 2026 | <a href="{{ discord_invite }}" target="_blank">Join Discord</a>
         </div>
     </div>
 
@@ -487,19 +487,19 @@ HTML_TEMPLATE = """
             .then(data => {
                 btnText.textContent = 'ACCESS SCRIPT';
                 if (data.success) {
-                    message.innerHTML = '<div class="success">✓ Access Granted</div>';
+                    message.innerHTML = '<div class="success">âœ“ Access Granted</div>';
                     setTimeout(() => {
                         document.getElementById('loginForm').style.display = 'none';
                         document.getElementById('scriptContent').style.display = 'block';
                     }, 500);
                 } else {
-                    message.innerHTML = '<div class="error">✗ Invalid Access Code</div>';
+                    message.innerHTML = '<div class="error">âœ— Invalid Access Code</div>';
                     document.getElementById('password').value = '';
                 }
             })
             .catch(error => {
                 btnText.textContent = 'ACCESS SCRIPT';
-                message.innerHTML = '<div class="error">✗ Connection Error</div>';
+                message.innerHTML = '<div class="error">âœ— Connection Error</div>';
             });
         }
 
@@ -716,7 +716,7 @@ ADMIN_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>🔧 Vanity Admin Panel</h1>
+        <h1>ðŸ”§ Vanity Admin Panel</h1>
         <p class="subtitle">Upload and manage your Lua script</p>
 
         <!-- Login Form -->
@@ -734,11 +734,11 @@ ADMIN_TEMPLATE = """
         <!-- Editor Form (hidden until login) -->
         <div id="editorForm">
             <div class="info">
-                <strong>📝 Your Script URL:</strong>
+                <strong>ðŸ“ Your Script URL:</strong>
                 <code>{{ script_url }}</code>
                 <br><br>
-                <strong>📋 Loadstring:</strong>
-                <code>loadstring(game:HttpGet("{{ script_url }}"))();</code>
+                <strong>ðŸ“‹ Loadstring:</strong>
+                <code>loadstring(game:HttpGet("{{ script_url }}", true, {["Vanity-Auth"] = "{{ script_password }}"}))();</code>
             </div>
 
             <div class="form-group">
@@ -778,21 +778,21 @@ ADMIN_TEMPLATE = """
                 if (data.success) {
                     adminPassword = password;
                     document.getElementById('scriptContent').value = data.script;
-                    message.innerHTML = '<div class="success">✓ Access Granted</div>';
+                    message.innerHTML = '<div class="success">âœ“ Access Granted</div>';
                     message.style.display = 'block';
                     setTimeout(() => {
                         document.getElementById('loginForm').style.display = 'none';
                         document.getElementById('editorForm').style.display = 'block';
                     }, 500);
                 } else {
-                    message.innerHTML = '<div class="error">✗ Invalid Password</div>';
+                    message.innerHTML = '<div class="error">âœ— Invalid Password</div>';
                     message.style.display = 'block';
                     document.getElementById('loginPassword').value = '';
                 }
             })
             .catch(error => {
                 btnText.textContent = 'ACCESS ADMIN PANEL';
-                message.innerHTML = '<div class="error">✗ Connection Error</div>';
+                message.innerHTML = '<div class="error">âœ— Connection Error</div>';
                 message.style.display = 'block';
             });
         }
@@ -820,17 +820,17 @@ ADMIN_TEMPLATE = """
                 message.style.display = 'block';
                 if (data.success) {
                     message.className = 'message success';
-                    message.textContent = '✓ Script published successfully!';
+                    message.textContent = 'âœ“ Script published successfully!';
                 } else {
                     message.className = 'message error';
-                    message.textContent = '✗ ' + data.message;
+                    message.textContent = 'âœ— ' + data.message;
                 }
             })
             .catch(error => {
                 btnText.textContent = 'PUBLISH SCRIPT';
                 message.style.display = 'block';
                 message.className = 'message error';
-                message.textContent = '✗ Connection error';
+                message.textContent = 'âœ— Connection error';
             });
         }
 
@@ -848,6 +848,125 @@ ADMIN_TEMPLATE = """
 def add_script_hosting_routes(app):
     """Add script hosting routes to the Flask app"""
     
+    # Config storage endpoints
+    @app.route('/api/configs', methods=['GET'])
+    def get_configs():
+        """Get all configs"""
+        try:
+            import sqlite3
+            conn = sqlite3.connect("vanity.db", timeout=10)
+            cursor = conn.cursor()
+            
+            # Create configs table if it doesn't exist
+            cursor.execute('''CREATE TABLE IF NOT EXISTS configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                author TEXT NOT NULL,
+                type TEXT NOT NULL,
+                downloads INTEGER DEFAULT 0,
+                date TEXT NOT NULL,
+                content TEXT NOT NULL
+            )''')
+            conn.commit()
+            
+            # Get all configs
+            cursor.execute("SELECT id, name, description, author, type, downloads, date FROM configs ORDER BY downloads DESC")
+            rows = cursor.fetchall()
+            
+            configs = []
+            for row in rows:
+                configs.append({
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "author": row[3],
+                    "type": row[4],
+                    "downloads": row[5],
+                    "date": row[6]
+                })
+            
+            conn.close()
+            return jsonify({"configs": configs}), 200
+        except Exception as e:
+            print(f"[CONFIGS] ERROR: {e}")
+            return jsonify({"configs": []}), 200
+    
+    @app.route('/api/configs', methods=['POST'])
+    def upload_config():
+        """Upload a new config"""
+        try:
+            import sqlite3
+            data = request.get_json()
+            
+            name = data.get('name')
+            description = data.get('description')
+            author = data.get('author')
+            config_type = data.get('type')
+            content = data.get('content')
+            date = data.get('date')
+            
+            if not all([name, description, author, config_type, content, date]):
+                return jsonify({"success": False, "message": "Missing required fields"}), 400
+            
+            conn = sqlite3.connect("vanity.db", timeout=10)
+            cursor = conn.cursor()
+            
+            # Create configs table if it doesn't exist
+            cursor.execute('''CREATE TABLE IF NOT EXISTS configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                author TEXT NOT NULL,
+                type TEXT NOT NULL,
+                downloads INTEGER DEFAULT 0,
+                date TEXT NOT NULL,
+                content TEXT NOT NULL
+            )''')
+            
+            # Insert new config
+            cursor.execute("""
+                INSERT INTO configs (name, description, author, type, downloads, date, content)
+                VALUES (?, ?, ?, ?, 0, ?, ?)
+            """, (name, description, author, config_type, date, content))
+            
+            config_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            return jsonify({"success": True, "id": config_id}), 200
+        except Exception as e:
+            print(f"[CONFIGS] UPLOAD ERROR: {e}")
+            return jsonify({"success": False, "message": str(e)}), 500
+    
+    @app.route('/api/configs/<int:config_id>/download', methods=['POST'])
+    def download_config(config_id):
+        """Download a config and increment download count"""
+        try:
+            import sqlite3
+            conn = sqlite3.connect("vanity.db", timeout=10)
+            cursor = conn.cursor()
+            
+            # Get config content
+            cursor.execute("SELECT content, name FROM configs WHERE id = ?", (config_id,))
+            row = cursor.fetchone()
+            
+            if not row:
+                conn.close()
+                return jsonify({"success": False, "message": "Config not found"}), 404
+            
+            content, name = row
+            
+            # Increment download count
+            cursor.execute("UPDATE configs SET downloads = downloads + 1 WHERE id = ?", (config_id,))
+            conn.commit()
+            conn.close()
+            
+            return jsonify({"success": True, "content": content, "name": name}), 200
+        except Exception as e:
+            print(f"[CONFIGS] DOWNLOAD ERROR: {e}")
+            return jsonify({"success": False, "message": str(e)}), 500
+    
     @app.route('/script')
     def script_page():
         """Serve the password-protected script page"""
@@ -856,13 +975,16 @@ def add_script_hosting_routes(app):
         return render_template_string(HTML_TEMPLATE, 
                                      script_url=script_url, 
                                      timestamp=timestamp,
-                                     discord_invite=DISCORD_INVITE)
+                                     discord_invite=DISCORD_INVITE,
+                                     script_password=SCRIPT_PASSWORD)
     
     @app.route('/admin')
     def admin_page():
         """Serve the admin panel for uploading scripts"""
         script_url = request.host_url + 'api/script/raw'
-        return render_template_string(ADMIN_TEMPLATE, script_url=script_url)
+        return render_template_string(ADMIN_TEMPLATE, 
+                                     script_url=script_url,
+                                     script_password=SCRIPT_PASSWORD)
     
     @app.route('/api/authenticate', methods=['POST'])
     def authenticate():
@@ -915,6 +1037,11 @@ def add_script_hosting_routes(app):
         # If it's a browser, redirect to Discord
         if is_browser and not is_roblox:
             return redirect(DISCORD_INVITE)
+            
+        # Check custom auth header to prevent URL scraping
+        auth_header = request.headers.get('Vanity-Auth')
+        if auth_header != SCRIPT_PASSWORD:
+            return "-- Access Denied: Missing or invalid Vanity-Auth header. Do not attempt to bypass.", 403
         
         # Otherwise, serve the script
         return SCRIPT_CONTENT, 200, {'Content-Type': 'text/plain; charset=utf-8'}
